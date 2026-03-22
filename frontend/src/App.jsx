@@ -3,7 +3,7 @@ import { io } from 'socket.io-client';
 import PatientList from './components/PatientList';
 import LiveMonitor from './components/LiveMonitor';
 
-const API_URL = 'http://localhost:3001';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 const MINI_HISTORY_MAX = 20;
 
 // Minimal IV-drop SVG logo
