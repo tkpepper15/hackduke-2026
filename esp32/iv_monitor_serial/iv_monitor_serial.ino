@@ -19,6 +19,7 @@
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 #define TEMP_PIN             4
+#define FSR_PIN              32
 #define DEVICE_ID            "patient_001"
 #define CALIBRATION_SAMPLES  10
 #define READING_INTERVAL_MS  2000
@@ -26,10 +27,12 @@
 // ── Calibration state ─────────────────────────────────────────────────────────
 float baseline_temp     = 0.0f;
 float baseline_humidity = 0.0f;
+int   baseline_pressure = 0;
 bool  calibrated        = false;
 int   cal_count         = 0;
 float temp_accum        = 0.0f;
 float humid_accum       = 0.0f;
+long  pressure_accum    = 0;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 void emitStatus(const char* status, const char* msg = nullptr) {
@@ -76,6 +79,7 @@ bool readDHT11(float &temp, float &humidity) {
 // ── Setup ─────────────────────────────────────────────────────────────────────
 void setup() {
   Serial.begin(115200);
+  analogSetAttenuation(ADC_11db);
   delay(2000);
   emitStatus("ready");
 }
@@ -91,11 +95,20 @@ void loop() {
     return;
   }
 
+  int pressure = analogRead(FSR_PIN);
+
+  // DEBUG: Print raw ADC value to Serial (remove after testing)
+  Serial.print("[DEBUG] Raw ADC on GPIO ");
+  Serial.print(FSR_PIN);
+  Serial.print(": ");
+  Serial.println(pressure);
+
   // ── Calibration phase ────────────────────────────────────────────────────
   if (!calibrated) {
     cal_count++;
-    temp_accum  += temperature;
-    humid_accum += humidity;
+    temp_accum     += temperature;
+    humid_accum    += humidity;
+    pressure_accum += pressure;
 
     StaticJsonDocument<128> cal;
     cal["status"] = "calibrating";
@@ -105,14 +118,16 @@ void loop() {
     Serial.println();
 
     if (cal_count >= CALIBRATION_SAMPLES) {
-      baseline_temp     = temp_accum  / CALIBRATION_SAMPLES;
-      baseline_humidity = humid_accum / CALIBRATION_SAMPLES;
+      baseline_temp     = temp_accum     / CALIBRATION_SAMPLES;
+      baseline_humidity = humid_accum    / CALIBRATION_SAMPLES;
+      baseline_pressure = pressure_accum / CALIBRATION_SAMPLES;
       calibrated        = true;
 
-      StaticJsonDocument<128> done;
+      StaticJsonDocument<192> done;
       done["status"]             = "calibrated";
       done["baseline_temp"]      = baseline_temp;
       done["baseline_humidity"]  = baseline_humidity;
+      done["baseline_pressure"]  = baseline_pressure;
       serializeJson(done, Serial);
       Serial.println();
     }
@@ -122,18 +137,19 @@ void loop() {
   }
 
   // ── Live reading ──────────────────────────────────────────────────────────
-  float temp_drop     = max(0.0f, baseline_temp     - temperature);
+  float temp_drop     = max(0.0f, baseline_temp - temperature);
   float humidity_rise = max(0.0f, humidity - baseline_humidity);
+  int   pressure_rise = max(0, pressure - baseline_pressure);
   float risk_score    = min(temp_drop * 3.0f, 100.0f); // backend overrides this
 
   StaticJsonDocument<256> doc;
   doc["device_id"]       = DEVICE_ID;
   doc["temperature"]     = temperature;
   doc["humidity"]        = humidity;
-  doc["pressure"]        = nullptr;
+  doc["pressure"]        = pressure;
   doc["temp_drop"]       = roundf(temp_drop * 10) / 10.0f;
   doc["humidity_rise"]   = roundf(humidity_rise * 10) / 10.0f;
-  doc["pressure_rise"]   = nullptr;
+  doc["pressure_rise"]   = pressure_rise;
   doc["risk_score"]      = (int)risk_score;
   doc["alert_level"]     = "normal"; // backend recomputes
   doc["timestamp"]       = (long)(millis() / 1000);
