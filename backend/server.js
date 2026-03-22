@@ -6,7 +6,8 @@ const cors = require('cors');
 
 const dataRoutes = require('./routes/data');
 const patientRoutes = require('./routes/patients');
-const { startMockDataGeneration } = require('./db/mockData');
+const { startSerialBridge } = require('./serial/bridge');
+const { startBotPatients }  = require('./db/botPatients');
 
 const app = express();
 const server = http.createServer(app);
@@ -43,5 +44,6 @@ io.on('connection', (socket) => {
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
   console.log(`IV Monitor backend running on port ${PORT}`);
-  startMockDataGeneration(io);
+  startSerialBridge(io);   // real ESP32 data via USB serial
+  startBotPatients(io);    // synthetic demo patients
 });

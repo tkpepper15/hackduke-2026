@@ -6,6 +6,20 @@ import LiveMonitor from './components/LiveMonitor';
 const API_URL = 'http://localhost:3001';
 const MINI_HISTORY_MAX = 20;
 
+// Minimal IV-drop SVG logo
+function IVIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path
+        d="M8 1.5C8 1.5 4 7 4 10.5a4 4 0 0 0 8 0C12 7 8 1.5 8 1.5Z"
+        fill="white"
+        opacity="0.95"
+      />
+      <path d="M6 10.5 Q8 9 10 10.5" stroke="white" strokeWidth="0.9" fill="none" opacity="0.55" />
+    </svg>
+  );
+}
+
 export default function App() {
   const [patients, setPatients] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
@@ -14,31 +28,27 @@ export default function App() {
   const [connected, setConnected] = useState(false);
   const hasAutoSelected = useRef(false);
 
-  // Load initial patient list and seed mini histories
   useEffect(() => {
     fetch(`${API_URL}/patients`)
       .then((r) => r.json())
       .then((data) => {
         if (!Array.isArray(data)) return;
         setPatients(data);
-        const latestMap = {};
-        data.forEach((p) => {
-          if (p.latest) latestMap[p.device_id] = p.latest;
-        });
-        setLatestByPatient(latestMap);
+        const map = {};
+        data.forEach((p) => { if (p.latest) map[p.device_id] = p.latest; });
+        setLatestByPatient(map);
         if (!hasAutoSelected.current && data.length > 0) {
           setSelectedId(data[0].device_id);
           hasAutoSelected.current = true;
         }
-        // Seed mini histories from the last 20 readings per patient
         data.forEach((p) => {
           fetch(`${API_URL}/patients/${p.device_id}/history?minutes=1`)
             .then((r) => r.json())
-            .then((history) => {
-              if (Array.isArray(history)) {
+            .then((h) => {
+              if (Array.isArray(h)) {
                 setMiniHistoryByPatient((prev) => ({
                   ...prev,
-                  [p.device_id]: history.slice(-MINI_HISTORY_MAX),
+                  [p.device_id]: h.slice(-MINI_HISTORY_MAX),
                 }));
               }
             })
@@ -48,91 +58,103 @@ export default function App() {
       .catch(console.error);
   }, []);
 
-  // Real-time updates via WebSocket
   useEffect(() => {
     const socket = io(API_URL, { transports: ['websocket'] });
-
     socket.on('connect', () => setConnected(true));
     socket.on('disconnect', () => setConnected(false));
-
     socket.on('reading', (reading) => {
       const { device_id } = reading;
-
       setLatestByPatient((prev) => ({ ...prev, [device_id]: reading }));
-
-      setMiniHistoryByPatient((prev) => {
-        const current = prev[device_id] ?? [];
-        return {
-          ...prev,
-          [device_id]: [...current, reading].slice(-MINI_HISTORY_MAX),
-        };
-      });
-
+      setMiniHistoryByPatient((prev) => ({
+        ...prev,
+        [device_id]: [...(prev[device_id] ?? []), reading].slice(-MINI_HISTORY_MAX),
+      }));
       setPatients((prev) => {
         const exists = prev.find((p) => p.device_id === device_id);
-        if (exists) {
-          return prev.map((p) =>
-            p.device_id === device_id ? { ...p, latest: reading } : p
-          );
-        }
-        if (!hasAutoSelected.current) {
-          setSelectedId(device_id);
-          hasAutoSelected.current = true;
-        }
+        if (exists) return prev.map((p) => p.device_id === device_id ? { ...p, latest: reading } : p);
+        if (!hasAutoSelected.current) { setSelectedId(device_id); hasAutoSelected.current = true; }
         return [...prev, { device_id, latest: reading }];
       });
     });
-
     return () => socket.disconnect();
   }, []);
 
   const selectedLatest = latestByPatient[selectedId];
 
   return (
-    <div className="flex h-screen bg-clinical-bg overflow-hidden">
+    <div className="flex h-screen overflow-hidden" style={{ backgroundColor: '#1a1b1e' }}>
+
       {/* ── Sidebar ── */}
-      <aside className="w-72 flex-shrink-0 bg-white border-r border-clinical-border flex flex-col">
-        {/* Header */}
-        <div className="px-5 py-4 border-b border-clinical-border">
-          <div className="flex items-center gap-2 mb-2">
+      <aside className="w-56 flex-shrink-0 flex flex-col" style={{ backgroundColor: '#1a1b1e', borderRight: '1px solid #2c2d31' }}>
+
+        {/* Brand */}
+        <div className="px-4 pt-5 pb-4" style={{ borderBottom: '1px solid #2c2d31' }}>
+          <div className="flex items-center gap-2.5">
+            <div
+              className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+              style={{ background: 'linear-gradient(135deg, #3574f0 0%, #1a56c4 100%)' }}
+            >
+              <IVIcon />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[13px] font-semibold leading-none" style={{ color: '#ebebeb' }}>
+                IV Monitor
+              </p>
+              <p className="text-[10px] mt-0.5" style={{ color: '#5c5e6e' }}>
+                IV Surveillance
+              </p>
+            </div>
+          </div>
+
+          {/* Live indicator */}
+          <div className="flex items-center gap-1.5 mt-3.5">
             <span
-              className={`inline-block w-2 h-2 rounded-full transition-colors ${
-                connected ? 'bg-green-500' : 'bg-gray-300 animate-pulse'
+              className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                connected ? 'bg-emerald-400' : 'animate-pulse'
               }`}
+              style={connected ? {} : { backgroundColor: '#5c5e6e' }}
             />
-            <span className="text-xs text-clinical-muted">
+            <span className="text-[10px]" style={{ color: connected ? '#6fcf97' : '#5c5e6e' }}>
               {connected ? 'Live' : 'Connecting…'}
             </span>
-            {patients.length > 0 && (
-              <span className="ml-auto text-xs text-clinical-subtle">
-                {patients.length} device{patients.length !== 1 ? 's' : ''}
-              </span>
-            )}
           </div>
-          <h1 className="text-[15px] font-semibold text-clinical-text leading-tight">
-            IV Site Monitor
-          </h1>
-          <p className="text-xs text-clinical-muted">Peripheral IV Surveillance</p>
+        </div>
+
+        {/* Section label */}
+        <div className="px-4 pt-4 pb-1.5 flex items-center justify-between">
+          <span className="text-[9px] font-semibold uppercase tracking-[0.12em]" style={{ color: '#5c5e6e' }}>
+            Patients
+          </span>
+          {patients.length > 0 && (
+            <span
+              className="text-[9px] font-medium px-1.5 py-0.5 rounded"
+              style={{ backgroundColor: '#2c2d31', color: '#9b9da8' }}
+            >
+              {patients.length}
+            </span>
+          )}
         </div>
 
         {/* Patient list */}
-        <PatientList
-          patients={patients}
-          selectedId={selectedId}
-          onSelect={setSelectedId}
-          miniHistoryByPatient={miniHistoryByPatient}
-        />
+        <div className="flex-1 overflow-y-auto sidebar-scroll px-2 pb-3">
+          <PatientList
+            patients={patients}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+            miniHistoryByPatient={miniHistoryByPatient}
+          />
+        </div>
 
         {/* Footer */}
-        <div className="px-5 py-3 border-t border-clinical-border">
-          <p className="text-[10px] text-clinical-subtle">
-            For clinical support use only
+        <div className="px-4 py-3" style={{ borderTop: '1px solid #2c2d31' }}>
+          <p className="text-[9px]" style={{ color: '#4b5563' }}>
+            Clinical monitoring only
           </p>
         </div>
       </aside>
 
-      {/* ── Main panel ── */}
-      <main className="flex-1 overflow-y-auto">
+      {/* ── Main ── */}
+      <main className="flex-1 overflow-hidden flex flex-col" style={{ backgroundColor: '#f7f8fa' }}>
         {selectedId && selectedLatest ? (
           <LiveMonitor
             key={selectedId}
@@ -141,10 +163,8 @@ export default function App() {
             apiUrl={API_URL}
           />
         ) : (
-          <div className="flex items-center justify-center h-full">
-            <p className="text-clinical-muted text-sm">
-              Select a patient to begin monitoring.
-            </p>
+          <div className="flex-1 flex items-center justify-center">
+            <p className="text-sm text-clinical-muted">Select a patient to begin monitoring.</p>
           </div>
         )}
       </main>

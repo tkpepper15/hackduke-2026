@@ -7,8 +7,8 @@ function validateReading(req, res, next) {
   if (typeof temperature !== 'number' || isNaN(temperature)) {
     return res.status(400).json({ error: 'temperature must be a number' });
   }
-  if (typeof pressure !== 'number' || isNaN(pressure)) {
-    return res.status(400).json({ error: 'pressure must be a number' });
+  if (pressure !== null && pressure !== undefined && (typeof pressure !== 'number' || isNaN(pressure))) {
+    return res.status(400).json({ error: 'pressure must be a number or null' });
   }
 
   next();

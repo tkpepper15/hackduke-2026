@@ -81,6 +81,7 @@ function generateReading(patient, scenario) {
     pressure_rise: Math.round(pressureRise),
     risk_score: riskScore,
     alert_level: alertLevel(riskScore),
+    source: 'mock',
     timestamp: Math.floor(Date.now() / 1000),
   };
 }

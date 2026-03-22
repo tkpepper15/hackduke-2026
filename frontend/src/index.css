@@ -2,26 +2,28 @@
 @tailwind components;
 @tailwind utilities;
 
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background-color: #f0f2f5;
-  color: #111827;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background-color: #f4f6f9;
+  color: #19191c;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11'; /* Inter optical features */
 }
 
-/* Smooth scrollbar for sidebar */
-::-webkit-scrollbar {
-  width: 4px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: #dde1e7;
-  border-radius: 2px;
-}
+/* Tabular numbers for readings */
+.nums { font-variant-numeric: tabular-nums; }
+
+/* Sidebar thin scrollbar */
+.sidebar-scroll::-webkit-scrollbar { width: 2px; }
+.sidebar-scroll::-webkit-scrollbar-track { background: transparent; }
+.sidebar-scroll::-webkit-scrollbar-thumb { background: #3a3c42; border-radius: 2px; }
+
+/* Main area scrollbar */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #d1d8e0; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #b0bac6; }
