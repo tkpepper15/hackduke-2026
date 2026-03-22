@@ -118,7 +118,6 @@ function SiteStatusCard({ latest, alertSince, patientId, apiUrl }) {
   const dur     = formatDuration(alertSince);
   const ins     = latest.ins_grade ?? 0;
   const insCfg  = getInsGrade(ins);
-  const deficit = latest.cumulative_deficit ?? 0;
   const riskCol = riskScoreColor(latest.risk_score ?? 0);
   const actions = INS_ACTIONS[ins];
 
@@ -182,7 +181,6 @@ function SiteStatusCard({ latest, alertSince, patientId, apiUrl }) {
             { label: 'Humidity',    value: latest.humidity    != null ? `${latest.humidity}%`     : '—' },
             { label: 'Pressure',    value: latest.pressure    != null ? `${latest.pressure} rpu`  : '—' },
             { label: 'Risk score',  value: latest.risk_score  != null ? `${latest.risk_score}/100`: '—', color: riskCol },
-            { label: 'Deficit',     value: `${deficit.toFixed(1)} °C·min`, color: deficit > 0.5 ? '#f97316' : undefined },
           ].map(({ label, value, color }) => (
             <div key={label}>
               <p style={{ fontSize: '10px', color: '#9ca3af', marginBottom: '2px' }}>{label}</p>
@@ -323,7 +321,7 @@ function SignalTable({ latest }) {
   if (!latest) return null;
   const {
     temperature, temp_drop = 0, humidity, humidity_rise = 0,
-    pressure, pressure_rise = 0, temp_rate = 0, cumulative_deficit = 0,
+    pressure, pressure_rise = 0, temp_rate = 0,
   } = latest;
 
   const rows = [
@@ -373,17 +371,6 @@ function SignalTable({ latest }) {
         ? 'Elevated — possible tissue resistance'
         : 'At baseline',
     },
-    {
-      label:  'Thermal deficit',
-      value:  cumulative_deficit?.toFixed(1),
-      unit:   ' °C·min',
-      status: cumulative_deficit > 2 ? 'abnormal' : cumulative_deficit > 0.5 ? 'borderline' : 'normal',
-      interpretation: cumulative_deficit > 2
-        ? 'Prolonged cooling — correlate with clinical exam'
-        : cumulative_deficit > 0.5
-        ? 'Developing — track trend'
-        : 'No sustained cooling detected',
-    },
   ];
 
   return (
@@ -416,6 +403,7 @@ export default function LiveMonitor({ patientId, latest, apiUrl }) {
   const [history,    setHistory]    = useState([]);
   const [timeWindow, setTimeWindow] = useState(15);
   const [alertSince, setAlertSince] = useState(null);
+  const [recalibrating, setRecalibrating] = useState(false);
   const prevLatestRef = useRef(null);
 
   const fetchHistory = useCallback(() => {
@@ -429,6 +417,17 @@ export default function LiveMonitor({ patientId, latest, apiUrl }) {
       })
       .catch(console.error);
   }, [patientId, timeWindow, apiUrl, latest?.alert_level]);
+
+  const handleRecalibrate = async () => {
+    setRecalibrating(true);
+    try {
+      const r = await fetch(`${apiUrl}/data/recalibrate`, { method: 'POST' });
+      if (!r.ok) throw new Error();
+    } catch (err) {
+      console.error('Recalibrate failed:', err);
+    }
+    setTimeout(() => setRecalibrating(false), 3000);
+  };
 
   useEffect(() => { setHistory([]); fetchHistory(); }, [fetchHistory]);
 
@@ -494,9 +493,40 @@ export default function LiveMonitor({ patientId, latest, apiUrl }) {
               <span style={{ color: '#d1d5db' }}>·</span>
               <span>DHT11 <span style={{ color: '#6b7280' }}>GPIO 4</span></span>
               <span style={{ color: '#d1d5db' }}>·</span>
-              <span>FSR 402 <span style={{ color: '#d1d5db' }}>offline</span></span>
+              <span>FSR 402 <span style={{ color: '#6b7280' }}>GPIO 32</span></span>
               <span style={{ color: '#d1d5db' }}>·</span>
               <span>ESP32 <span style={{ color: '#6b7280' }}>115200 baud</span></span>
+              <span style={{ color: '#d1d5db' }}>·</span>
+              <button
+                onClick={handleRecalibrate}
+                disabled={recalibrating}
+                style={{
+                  padding: '3px 8px',
+                  fontSize: '10px',
+                  fontWeight: '500',
+                  color: recalibrating ? '#9ca3af' : '#3b82f6',
+                  backgroundColor: recalibrating ? '#f3f4f6' : '#eff6ff',
+                  border: '1px solid',
+                  borderColor: recalibrating ? '#e5e7eb' : '#bfdbfe',
+                  borderRadius: '4px',
+                  cursor: recalibrating ? 'not-allowed' : 'pointer',
+                  transition: 'all 0.15s',
+                }}
+                onMouseEnter={(e) => {
+                  if (!recalibrating) {
+                    e.currentTarget.style.backgroundColor = '#dbeafe';
+                    e.currentTarget.style.borderColor = '#93c5fd';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!recalibrating) {
+                    e.currentTarget.style.backgroundColor = '#eff6ff';
+                    e.currentTarget.style.borderColor = '#bfdbfe';
+                  }
+                }}
+              >
+                {recalibrating ? 'Recalibrating...' : 'Recalibrate'}
+              </button>
             </div>
           )}
 
@@ -533,6 +563,7 @@ export default function LiveMonitor({ patientId, latest, apiUrl }) {
               </div>
             </div>
             {[
+              { key: 'risk_score',  label: 'Risk score',     unit: '/100',   color: '#ef4444' },
               { key: 'temperature', label: 'Temperature',    unit: '°C',     color: '#3b82f6' },
               { key: 'temp_rate',   label: 'Rate of change', unit: '°C/min', color: '#f97316' },
               { key: 'humidity',    label: 'Humidity',       unit: '%',      color: '#06b6d4' },

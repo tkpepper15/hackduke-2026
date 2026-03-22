@@ -13,6 +13,8 @@ const PORT_PATTERNS = [
   /FT232/i,
 ];
 
+let activePort = null;
+
 async function detectPort() {
   const ports = await SerialPort.list();
   for (const p of ports) {
@@ -35,10 +37,14 @@ function openPort(path, io) {
     }
   });
 
-  port.on('open',  () => console.log(`[serial] Connected — ${path}`));
+  port.on('open',  () => {
+    console.log(`[serial] Connected — ${path}`);
+    activePort = port;
+  });
   port.on('error', (err) => console.error('[serial] Error:', err.message));
   port.on('close', () => {
     console.log('[serial] Port closed — retrying in 5 s');
+    activePort = null;
     scheduleRetry(io);
   });
 
@@ -63,13 +69,16 @@ function openPort(path, io) {
     if (msg.status) {
       switch (msg.status) {
         case 'ready':
-          console.log('[serial] Device ready — beginning calibration');
+          console.log('[serial] Device ready —', msg.msg || 'beginning calibration');
           break;
         case 'calibrating':
           console.log(`[serial] Calibrating… ${msg.sample}/${msg.of}`);
           break;
         case 'calibrated':
           console.log(`[serial] Baseline set — temp ${msg.baseline_temp}°C`);
+          break;
+        case 'calibration_reset':
+          console.log('[serial] Calibration reset —', msg.msg);
           break;
         case 'sensor_error':
           console.error('[serial] Sensor error:', msg.msg);
@@ -89,10 +98,10 @@ function openPort(path, io) {
     }
 
     const reading = { ...msg, source: 'device', received_at: Date.now() };
-    upsertReading(device_id, reading);
-    io.emit('reading', reading);
+    const patient = upsertReading(device_id, reading);
+    io.emit('reading', patient.latest);  // Emit enriched reading with backend-computed risk score
     console.log(
-      `[serial] ${device_id}  ${temperature}°C  score=${msg.risk_score}  ${msg.alert_level}`
+      `[serial] ${device_id}  ${temperature}°C  score=${patient.latest.risk_score}  ${patient.latest.alert_level}`
     );
   });
 }
@@ -116,4 +125,20 @@ async function startSerialBridge(io) {
   openPort(path, io);
 }
 
-module.exports = { startSerialBridge };
+function sendCommand(cmd) {
+  if (!activePort || !activePort.isOpen) {
+    console.warn('[serial] Cannot send command — port not open');
+    return false;
+  }
+  activePort.write(cmd, (err) => {
+    if (err) console.error('[serial] Write error:', err.message);
+    else console.log(`[serial] Sent command: ${cmd}`);
+  });
+  return true;
+}
+
+function recalibrate() {
+  return sendCommand('C');
+}
+
+module.exports = { startSerialBridge, recalibrate };

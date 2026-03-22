@@ -81,11 +81,28 @@ void setup() {
   Serial.begin(115200);
   analogSetAttenuation(ADC_11db);
   delay(2000);
-  emitStatus("ready");
+  emitStatus("ready", "Place sensor on arm, then send 'C' to calibrate");
+}
+
+void resetCalibration() {
+  calibrated = false;
+  cal_count = 0;
+  temp_accum = 0.0f;
+  humid_accum = 0.0f;
+  pressure_accum = 0;
+  emitStatus("calibration_reset", "Starting calibration...");
 }
 
 // ── Loop ──────────────────────────────────────────────────────────────────────
 void loop() {
+  // Check for calibration command
+  if (Serial.available() > 0) {
+    char cmd = Serial.read();
+    if (cmd == 'C' || cmd == 'c') {
+      resetCalibration();
+    }
+  }
+
   float temperature = 0.0f;
   float humidity    = 0.0f;
 

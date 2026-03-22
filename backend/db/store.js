@@ -43,21 +43,21 @@ function computeDewPoint(tempC, rhPct) {
 /**
  * Rate-aware, multi-signal risk score (0–100).
  *
- * Temperature magnitude  — up to 50 pts  (primary infiltration signal)
+ * Temperature magnitude  — up to 40 pts  (primary infiltration signal)
  * Rate of change         — up to 25 pts  (rapid drop = higher urgency)
- * Humidity rise          — up to 15 pts  (wet-dressing surface moisture)
- * Pressure               — up to 10 pts  (FSR, reserved)
+ * Pressure               — up to 25 pts  (swelling/tissue resistance)
+ * Humidity rise          — up to 10 pts  (wet-dressing surface moisture)
  *
  * Noise thresholds prevent DHT11 integer-step artifacts from inflating scores.
  */
 function computeRiskScore(tempDrop, pressureRise, tempRate, humidityRise) {
-  const magnitude   = Math.min(tempDrop * 5, 50);
+  const magnitude   = Math.min(tempDrop * 5, 40);
   const dropRate    = Math.max(0, -(tempRate ?? 0));
   const rateScore   = dropRate > 0.3 ? Math.min((dropRate - 0.3) * 10, 25) : 0;
-  const humidScore  = (humidityRise ?? 0) > 2
-    ? Math.min(((humidityRise - 2) / 3) * 15, 15)
+  const humidScore  = (humidityRise ?? 0) > 3
+    ? Math.min(((humidityRise - 3) / 4) * 10, 10)
     : 0;
-  const pressScore  = pressureRise != null ? Math.min(pressureRise * 0.04, 10) : 0;
+  const pressScore  = pressureRise != null ? Math.min(pressureRise * 0.12, 25) : 0;
   return Math.min(Math.round(magnitude + rateScore + humidScore + pressScore), 100);
 }
 
@@ -113,7 +113,11 @@ function upsertReading(deviceId, reading) {
   const dewPoint    = computeDewPoint(reading.temperature, reading.humidity ?? null);
   const riskScore   = computeRiskScore(tempDrop, pressRise, tempRate, humidRise);
 
-  const cumulativeDeficit = computeCumulativeDeficit(patient.readings);
+  // DEBUG
+  if (reading.source === 'device') {
+    console.log(`[risk calc] tempDrop=${tempDrop} pressRise=${pressRise} tempRate=${tempRate?.toFixed(2)} humidRise=${humidRise}`);
+    console.log(`[risk calc] ESP32 sent risk=${reading.risk_score}, backend computed=${riskScore}`);
+  }
 
   const enriched = {
     ...reading,
@@ -122,7 +126,6 @@ function upsertReading(deviceId, reading) {
     risk_score:         riskScore,
     alert_level:        alertLevel(riskScore),
     ins_grade:          insGrade(riskScore),
-    cumulative_deficit: cumulativeDeficit,
   };
 
   patient.latest = enriched;

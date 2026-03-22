@@ -114,7 +114,11 @@ export default function TrendChart({ data, dataKey, label, unit, color }) {
 
     const values = smoothed.map((d) => d.value).filter(isFinite);
     let dom = ['auto', 'auto'];
-    if (values.length > 0) {
+
+    // Risk score always uses 0-100 range for consistency
+    if (dataKey === 'risk_score') {
+      dom = [0, 100];
+    } else if (values.length > 0) {
       const lo  = Math.min(...values), hi = Math.max(...values);
       const pad = Math.max((hi - lo) * 0.25, 0.3);
       dom = [
@@ -186,6 +190,22 @@ export default function TrendChart({ data, dataKey, label, unit, color }) {
               content={<CustomTooltip unit={unit} />}
               cursor={{ stroke: '#e8eaed', strokeWidth: 1 }}
             />
+
+            {/* Risk score threshold lines */}
+            {dataKey === 'risk_score' && [
+              { value: 30, label: 'Monitor',  color: '#f59e0b' },
+              { value: 60, label: 'Elevated', color: '#f97316' },
+              { value: 80, label: 'Critical', color: '#ef4444' },
+            ].map((threshold) => (
+              <ReferenceLine
+                key={threshold.value}
+                y={threshold.value}
+                stroke={threshold.color}
+                strokeWidth={1}
+                strokeDasharray="4 4"
+                strokeOpacity={0.25}
+              />
+            ))}
 
             {/* Sparse transition markers — deduped, no text labels */}
             {transitions.map((t) => (
