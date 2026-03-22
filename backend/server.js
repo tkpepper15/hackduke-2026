@@ -4,8 +4,9 @@ const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
 
-const dataRoutes = require('./routes/data');
-const patientRoutes = require('./routes/patients');
+const dataRoutes      = require('./routes/data');
+const patientRoutes   = require('./routes/patients');
+const aiSummaryRoutes = require('./routes/aiSummary');
 const { startSerialBridge } = require('./serial/bridge');
 const { startBotPatients }  = require('./db/botPatients');
 
@@ -29,6 +30,7 @@ app.set('io', io);
 
 app.use('/data', dataRoutes);
 app.use('/patients', patientRoutes);
+app.use('/ai-summary', aiSummaryRoutes);
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: Date.now() });
