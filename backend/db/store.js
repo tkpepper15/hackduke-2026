@@ -159,4 +159,13 @@ function getHistory(deviceId, sinceTimestamp) {
   return patient.readings;
 }
 
-module.exports = { upsertReading, getPatient, getAllPatients, getHistory };
+function clearHistory(deviceId) {
+  const patient = store.get(deviceId);
+  if (!patient) return false;
+  patient.readings = [];
+  patient.latest = null;
+  console.log(`[store] Cleared history for ${deviceId}`);
+  return true;
+}
+
+module.exports = { upsertReading, getPatient, getAllPatients, getHistory, clearHistory };

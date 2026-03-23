@@ -404,6 +404,10 @@ export default function LiveMonitor({ patientId, latest, apiUrl }) {
   const [timeWindow, setTimeWindow] = useState(15);
   const [alertSince, setAlertSince] = useState(null);
   const [recalibrating, setRecalibrating] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+  const [frozenLatest, setFrozenLatest] = useState(null);
+  const [frozenHistory, setFrozenHistory] = useState([]);
   const prevLatestRef = useRef(null);
 
   const fetchHistory = useCallback(() => {
@@ -429,10 +433,25 @@ export default function LiveMonitor({ patientId, latest, apiUrl }) {
     setTimeout(() => setRecalibrating(false), 3000);
   };
 
+  const handleClearHistory = async () => {
+    if (!confirm('Clear all historical data? This will reset charts but keep calibration.')) return;
+    setClearing(true);
+    try {
+      const r = await fetch(`${apiUrl}/patients/${patientId}/history`, { method: 'DELETE' });
+      if (!r.ok) throw new Error();
+      setHistory([]);
+    } catch (err) {
+      console.error('Clear history failed:', err);
+    }
+    setTimeout(() => setClearing(false), 1000);
+  };
+
   useEffect(() => { setHistory([]); fetchHistory(); }, [fetchHistory]);
 
   useEffect(() => {
     if (!latest) return;
+    if (isPaused) return;
+
     setHistory((prev) => {
       const cutoffMs = Date.now() - timeWindow * 60 * 1000;
       const trimmed  = prev.filter((r) => (r.received_at ?? r.timestamp * 1000) >= cutoffMs);
@@ -446,9 +465,21 @@ export default function LiveMonitor({ patientId, latest, apiUrl }) {
       setAlertSince(latest.received_at ? Math.floor(latest.received_at / 1000) : latest.timestamp);
     }
     prevLatestRef.current = latest;
-  }, [latest, timeWindow]);
+  }, [latest, timeWindow, isPaused]);
 
-  const level = latest?.alert_level ?? 'normal';
+  const togglePause = () => {
+    if (!isPaused) {
+      // Freezing - capture current state
+      setFrozenLatest(latest);
+      setFrozenHistory([...history]);
+    }
+    setIsPaused(!isPaused);
+  };
+
+  const displayLatest = isPaused ? frozenLatest : latest;
+  const displayHistory = isPaused ? frozenHistory : history;
+
+  const level = displayLatest?.alert_level ?? 'normal';
   const cfg   = getAlertConfig(level);
 
   return (
@@ -463,13 +494,13 @@ export default function LiveMonitor({ patientId, latest, apiUrl }) {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px', fontSize: '11px', color: '#9ca3af' }}>
           <span>
-            {formatTimestamp(latest?.received_at ? Math.floor(latest.received_at / 1000) : latest?.timestamp)}
+            {formatTimestamp(displayLatest?.received_at ? Math.floor(displayLatest.received_at / 1000) : displayLatest?.timestamp)}
           </span>
           <span style={{ color: '#e5e7eb' }}>·</span>
-          {latest?.source === 'device' ? (
+          {displayLatest?.source === 'device' ? (
             <span style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#6b7280' }}>
-              <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#34d399', display: 'inline-block', animation: 'pulse 2s infinite' }} />
-              Live
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: isPaused ? '#f59e0b' : '#34d399', display: 'inline-block', animation: isPaused ? 'none' : 'pulse 2s infinite' }} />
+              {isPaused ? 'Paused' : 'Live'}
             </span>
           ) : (
             <span>Simulated</span>
@@ -487,7 +518,7 @@ export default function LiveMonitor({ patientId, latest, apiUrl }) {
         <div style={{ maxWidth: '880px', margin: '0 auto', padding: '24px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
 
           {/* Hardware strip */}
-          {latest?.source === 'device' && (
+          {displayLatest?.source === 'device' && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', color: '#9ca3af' }}>
               <span style={{ color: '#6b7280', fontWeight: '500' }}>Hardware</span>
               <span style={{ color: '#d1d5db' }}>·</span>
@@ -527,14 +558,71 @@ export default function LiveMonitor({ patientId, latest, apiUrl }) {
               >
                 {recalibrating ? 'Recalibrating...' : 'Recalibrate'}
               </button>
+              <span style={{ color: '#d1d5db' }}>·</span>
+              <button
+                onClick={handleClearHistory}
+                disabled={clearing}
+                style={{
+                  padding: '3px 8px',
+                  fontSize: '10px',
+                  fontWeight: '500',
+                  color: clearing ? '#9ca3af' : '#6b7280',
+                  backgroundColor: clearing ? '#f3f4f6' : 'transparent',
+                  border: '1px solid',
+                  borderColor: clearing ? '#e5e7eb' : '#d1d5db',
+                  borderRadius: '4px',
+                  cursor: clearing ? 'not-allowed' : 'pointer',
+                  transition: 'all 0.15s',
+                }}
+                onMouseEnter={(e) => {
+                  if (!clearing) {
+                    e.currentTarget.style.backgroundColor = '#f9fafb';
+                    e.currentTarget.style.borderColor = '#9ca3af';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!clearing) {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                    e.currentTarget.style.borderColor = '#d1d5db';
+                  }
+                }}
+              >
+                {clearing ? 'Clearing...' : 'Clear Data'}
+              </button>
+              <span style={{ color: '#d1d5db' }}>·</span>
+              <button
+                onClick={togglePause}
+                style={{
+                  padding: '3px 8px',
+                  fontSize: '10px',
+                  fontWeight: '500',
+                  color: isPaused ? '#ef4444' : '#10b981',
+                  backgroundColor: isPaused ? '#fef2f2' : '#f0fdf4',
+                  border: '1px solid',
+                  borderColor: isPaused ? '#fecaca' : '#bbf7d0',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = isPaused ? '#fee2e2' : '#dcfce7';
+                  e.currentTarget.style.borderColor = isPaused ? '#fca5a5' : '#86efac';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = isPaused ? '#fef2f2' : '#f0fdf4';
+                  e.currentTarget.style.borderColor = isPaused ? '#fecaca' : '#bbf7d0';
+                }}
+              >
+                {isPaused ? '▶ Resume' : '⏸ Pause'}
+              </button>
             </div>
           )}
 
           {/* Primary card */}
-          <SiteStatusCard latest={latest} alertSince={alertSince} patientId={patientId} apiUrl={apiUrl} />
+          <SiteStatusCard latest={displayLatest} alertSince={alertSince} patientId={patientId} apiUrl={apiUrl} />
 
           {/* Signal table */}
-          <SignalTable latest={latest} />
+          <SignalTable latest={displayLatest} />
 
           {/* Charts */}
           <div className="rounded-lg" style={{ backgroundColor: '#fff', border: '1px solid #e8eaed', overflow: 'hidden' }}>
@@ -571,7 +659,7 @@ export default function LiveMonitor({ patientId, latest, apiUrl }) {
             ].map(({ key, label, unit, color }, i, arr) => (
               <React.Fragment key={key}>
                 <div style={{ padding: '16px 24px 12px' }}>
-                  <TrendChart data={history} dataKey={key} label={label} unit={unit} color={color} />
+                  <TrendChart data={displayHistory} dataKey={key} label={label} unit={unit} color={color} />
                 </div>
                 {i < arr.length - 1 && <div style={{ borderTop: '1px solid #f0f1f3', margin: '0 24px' }} />}
               </React.Fragment>
